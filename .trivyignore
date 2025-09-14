@@ -1,0 +1,9 @@
+# Ignore vulnerabilities in system npm installation
+# These are part of the base Docker image and not our application dependencies
+# CVE-2024-21538: cross-spawn ReDoS vulnerability in system npm
+# Not exploitable because:
+# - npm is not used at runtime (we run 'node server.js', not npm commands)
+# - No user input can reach the vulnerable code path
+# - The vulnerability is in /usr/local/lib/node_modules/npm/, not our app dependencies
+# - Our Next.js app uses its own dependencies in /app/node_modules/
+CVE-2024-21538

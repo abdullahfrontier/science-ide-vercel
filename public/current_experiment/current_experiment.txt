@@ -1,0 +1,44 @@
+# My Awesome Experiment Log
+
+**Date:** {{ Today's Date }}
+
+## Introduction
+
+This document logs the progress and findings of our ongoing experiment. We are testing the amazing capabilities of AI agents in various scenarios.
+
+## Phase 1: Initial Setup
+
+- [x] Configure environment
+- [x] Deploy agent v0.1
+- [ ] Start data collection
+
+We encountered a minor issue with the flux capacitor, but it was quickly resolved by reversing the polarity.
+
+### Observations:
+The agent seems to be responding well to initial stimuli.
+
+
+
+![Agent Schematic](image.png)
+*Fig 1: Basic schematic of the agent's core components.*
+
+## Phase 2: Active Testing
+
+We will now proceed to Phase 2. The primary goal is to observe the agent's learning capabilities over a 24-hour period.
+
+### Key Metrics:
+*   Response time
+*   Accuracy of task completion
+*   Resource utilization 
+
+test 1
+
+test 2
+
+test 3
+
+test 4
+
+test 5
+
+test 
