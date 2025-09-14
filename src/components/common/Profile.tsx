@@ -5,7 +5,7 @@ import {UserOutlined, SaveOutlined, CompassOutlined} from '@ant-design/icons'
 import {useDispatch, useSelector} from 'react-redux'
 import {RootState, AppDispatch} from '@/store'
 
-import {MainHeading} from './MainHeading'
+import {MainHeading} from '../common/MainHeading'
 import {doUpdateUser} from '@/api'
 import {updateUser} from '@/store/slices/authSlice'
 
