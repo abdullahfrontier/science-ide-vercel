@@ -1,16 +1,16 @@
 import {NextApiRequest, NextApiResponse} from 'next'
 import OpenAI from 'openai'
 
-const client = new OpenAI({
-	apiKey: process.env.OPENAI_API_KEY
-})
+// const client = new OpenAI({
+// 	apiKey: process.env.OPENAI_API_KEY
+// })
 
-function fixSpacing(text: string): string {
-	return text
-		.replace(/([.?!])(?=\w)/g, '$1 ') // Add space after punctuation if missing
-		.replace(/\s+/g, ' ') // Collapse multiple spaces
-		.trim()
-}
+// function fixSpacing(text: string): string {
+// 	return text
+// 		.replace(/([.?!])(?=\w)/g, '$1 ') // Add space after punctuation if missing
+// 		.replace(/\s+/g, ' ') // Collapse multiple spaces
+// 		.trim()
+// }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
 	if (req.method !== 'POST') {
@@ -20,41 +20,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 	try {
 		const {textBefore, textAfter} = req.body
 
-		// Enhanced logic to prevent over-aggressive suggestions
-		const trimmedBefore = textBefore.trim()
-		const endsWithSpace = textBefore.endsWith(' ')
+		const AI_PROVIDER = 'openai'
+		// const AI_ENDPOINT = AI_PROVIDER === 'local' ?
+		const LOCAL_AI_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 
-		// Don't suggest if text is too short to have meaningful context
-		if (trimmedBefore.length < 3) {
-			return res.status(200).json({suggestion: null})
-		}
+		// Send FULL document context without any limits
+		console.log(`[Autocomplete Context] Before: ${textBefore.length} chars (${Math.round(textBefore.length / 6)} words), After: ${textAfter.length} chars (${Math.round(textAfter.length / 6)} words)`)
 
-		// Don't suggest if text ends with punctuation followed by space (sentence is complete)
-		if (trimmedBefore.match(/[.!?]\s*$/) && endsWithSpace) {
-			return res.status(200).json({suggestion: null})
-		}
+		const prompt = `You are an intelligent autocomplete assistant. Given the text context, suggest the most likely completion for the current word or phrase. Only return the completion text that should be appended, not the entire sentence.\n\nText before cursor: "${textBefore}"\nText after cursor: "${textAfter}"\n\nRules:\n- If the last word appears incomplete, complete it\n- If the last word is complete and followed by a space, suggest the next likely word or short phrase\n- Keep suggestions concise (1-5 words typically)\n- Match the tone and style of the existing text\n- Return only the text to be inserted, nothing else\n- If no good suggestion, return empty string`
 
-		// Determine if we need to add a leading space
-		// Add space if: no trailing space AND doesn't already end with whitespace
-		const endsWithPunctuation = textBefore.match(/[.!?]$/)
-		const needsLeadingSpace = !endsWithSpace && textBefore.length > 0
+		// Use GPT-5-mini with the OpenAI SDK
+		const useGpt5Mini = AI_PROVIDER === 'openai' && true // Toggle this to enable/disable GPT-5-mini
 
-		const prompt = `
-You are an autocomplete engine for a text editor.
+		if (useGpt5Mini) {
+			try {
+				// Use OpenAI SDK for GPT-5-mini
+				const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
 
-Your task:
-- Predict and continue the user's text in a natural, contextual, and fluent way.
-- Never ask questions or change the conversation's perspective.
-- Never repeat text already present.
-- Match tone, grammar, and style of existing text.
-- Return only the completion text, no quotes or extra words.
-- If it's unclear what to write next, return an empty string.
+				const response = await client.responses.create({
+					model: 'gpt-5-mini',
+					instructions: `You are an intelligent autocomplete assistant. Given the text context, suggest the most likely completion for the current word or phrase. Only return the completion text that should be appended, not the entire sentence.
 
-Context:
-- Text before cursor: "${textBefore}"
-- Text after cursor: "${textAfter}"
-`
-		try {
+	Rules:
+	- If the last word appears incomplete, complete it
+	- If the last word is complete and followed by a space, suggest the next likely word or short phrase
+	- Keep suggestions concise (1-5 words typically)
+	- Match the tone and style of the existing text
+	- Return only the text to be inserted, nothing else
+	- If no good suggestion, return empty string`,
+					input: `Text before cursor: "${textBefore}"\nText after cursor: "${textAfter}"`
+				})
+
+				console.log('[GPT-5-mini SDK Response]:', response)
+				const suggestion = response.output_text?.trim()
+				console.log('[GPT-5-mini Extracted Suggestion]:', suggestion)
+				return suggestion || null
+			} catch (gpt5Error: any) {
+				console.log('[GPT-5-mini Error]:', gpt5Error.message)
+				console.log('[Autocomplete] gpt-5-mini not available, falling back to gpt-4o-mini')
+
+				// Fallback to gpt-4o-mini using standard chat completions
+				const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+				const response = await client.chat.completions.create({
+					model: 'gpt-4o-mini',
+					messages: [
+						{
+							role: 'system',
+							content: prompt
+						}
+					],
+					temperature: 1.0,
+					max_tokens: 200
+				})
+
+				const suggestion = response.choices?.[0]?.message?.content?.trim()
+				console.log('[Fallback to gpt-4o-mini] Extracted Suggestion:', suggestion)
+				return suggestion || null
+			}
+		} else if (AI_PROVIDER === 'openai') {
+			// Use standard OpenAI chat completions for non-GPT-5 models
+			const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
 			const response = await client.chat.completions.create({
 				model: 'gpt-4o-mini',
 				messages: [
@@ -63,39 +88,45 @@ Context:
 						content: prompt
 					}
 				],
-				temperature: 0.4, // Slightly higher for more creative conversational responses
-				max_tokens: 40 // More tokens for complete phrases
+				temperature: 1.0,
+				max_tokens: 200
 			})
 
-			let suggestion = response.choices?.[0]?.message?.content?.trim()
-
-			// Additional client-side filtering and formatting
-			if (suggestion) {
-				suggestion = fixSpacing(suggestion)
-				// Don't suggest if it would repeat recent words
-				const recentWords = textBefore.split(/\s+/).slice(-3).join(' ').toLowerCase()
-				if (recentWords.includes(suggestion.toLowerCase())) {
-					return res.status(200).json({suggestion: null})
-				}
-
-				// Don't suggest single characters or very short words unless meaningful
-				if (suggestion.length === 1 || (suggestion.length === 2 && !suggestion.match(/^(is|to|in|on|at|be|do|go|no|my|we)$/i))) {
-					return res.status(200).json({suggestion: null})
-				}
-
-				// Handle spacing: add leading space if needed
-				if (needsLeadingSpace && !suggestion.startsWith(' ')) {
-					suggestion = ' ' + suggestion
-				}
+			const suggestion = response.choices?.[0]?.message?.content?.trim()
+			return suggestion || null
+		} else {
+			// Local endpoint fallback
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				'ngrok-skip-browser-warning': 'true'
 			}
 
-			return res.status(200).json({suggestion: suggestion || null})
-		} catch (error) {
-			console.error('OpenAI error:', error)
-			return res.status(500).json({suggestion: null})
+			const response = await fetch(LOCAL_AI_ENDPOINT, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					messages: [
+						{
+							role: 'system',
+							content: prompt
+						}
+					],
+					stream: false,
+					temperature: 1.0,
+					max_tokens: 200
+				})
+			})
+
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`)
+			}
+
+			const data = await response.json()
+			const suggestion = data.choices?.[0]?.message?.content?.trim() || data.content?.trim()
+			return suggestion || null
 		}
 	} catch (error) {
-		console.error('Autocomplete API error:', error)
-		return res.status(500).json({error: 'Failed to get autocomplete suggestion'})
+		console.error('Autocomplete error:', error)
+		return null
 	}
 }
