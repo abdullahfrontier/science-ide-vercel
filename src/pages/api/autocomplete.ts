@@ -1,9 +1,9 @@
 import {NextApiRequest, NextApiResponse} from 'next'
 import OpenAI from 'openai'
 
-// const client = new OpenAI({
-// 	apiKey: process.env.OPENAI_API_KEY
-// })
+const client = new OpenAI({
+	apiKey: process.env.OPENAI_API_KEY
+})
 
 // function fixSpacing(text: string): string {
 // 	return text
@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 		if (useGpt5Mini) {
 			try {
 				// Use OpenAI SDK for GPT-5-mini
-				const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+				// const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
 
 				const response = await client.responses.create({
 					model: 'gpt-5-mini',
@@ -54,13 +54,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 				console.log('[GPT-5-mini SDK Response]:', response)
 				const suggestion = response.output_text?.trim()
 				console.log('[GPT-5-mini Extracted Suggestion]:', suggestion)
-				return suggestion || null
+				return res.status(200).json({suggestion})
 			} catch (gpt5Error: any) {
 				console.log('[GPT-5-mini Error]:', gpt5Error.message)
 				console.log('[Autocomplete] gpt-5-mini not available, falling back to gpt-4o-mini')
 
 				// Fallback to gpt-4o-mini using standard chat completions
-				const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+				// const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
 				const response = await client.chat.completions.create({
 					model: 'gpt-4o-mini',
 					messages: [
@@ -75,11 +75,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 				const suggestion = response.choices?.[0]?.message?.content?.trim()
 				console.log('[Fallback to gpt-4o-mini] Extracted Suggestion:', suggestion)
-				return suggestion || null
+				return res.status(200).json({suggestion})
 			}
 		} else if (AI_PROVIDER === 'openai') {
 			// Use standard OpenAI chat completions for non-GPT-5 models
-			const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+			// const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY})
 			const response = await client.chat.completions.create({
 				model: 'gpt-4o-mini',
 				messages: [
@@ -93,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 			})
 
 			const suggestion = response.choices?.[0]?.message?.content?.trim()
-			return suggestion || null
+			return res.status(200).json({suggestion})
 		} else {
 			// Local endpoint fallback
 			const headers: Record<string, string> = {
@@ -123,7 +123,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 			const data = await response.json()
 			const suggestion = data.choices?.[0]?.message?.content?.trim() || data.content?.trim()
-			return suggestion || null
+			return res.status(200).json({suggestion})
 		}
 	} catch (error) {
 		console.error('Autocomplete error:', error)
