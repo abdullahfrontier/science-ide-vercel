@@ -1,6 +1,6 @@
 'use client'
 
-import React, {useEffect, useRef} from 'react'
+import React, {useEffect, useRef, useState} from 'react'
 import {LexicalComposer} from '@lexical/react/LexicalComposer'
 import {RichTextPlugin} from '@lexical/react/LexicalRichTextPlugin'
 import {ContentEditable} from '@lexical/react/LexicalContentEditable'
@@ -11,9 +11,17 @@ import AutocompletePlugin from './AutocompletePlugin'
 import {AutocompleteNode} from './AutocompleteNode'
 import {LexicalToolbar} from './LexicalToolbar'
 import {MiniAIToolbar} from './MiniAIToolbar'
+import EditorWithAlternatives from './EditorWithAlternatives'
+
+export type Alternative = {
+	id: string
+	label: string
+	text: string
+}
 
 export default function CollaborativeEditor() {
 	const editorRef = useRef<HTMLDivElement>(null)
+	const [alternatives, setAlternatives] = useState<Alternative[]>([])
 
 	const initialConfig = {
 		namespace: 'MyEditor',
@@ -59,7 +67,8 @@ export default function CollaborativeEditor() {
 				</div>
 
 				<HistoryPlugin />
-				<AutocompletePlugin />
+				<AutocompletePlugin onAlternatives={setAlternatives} />
+				<EditorWithAlternatives alternatives={alternatives} />
 			</LexicalComposer>
 		</div>
 	)

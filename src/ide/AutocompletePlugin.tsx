@@ -1,6 +1,8 @@
 import type {BaseSelection, NodeKey, TextNode, LexicalNode} from 'lexical'
 import type {JSX} from 'react'
 
+import {useState} from 'react'
+
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext'
 import {mergeRegister} from '@lexical/utils'
 import {$addUpdateTag, $createTextNode, $getNodeByKey, $getSelection, $isRangeSelection, $isTextNode, $setSelection, $getRoot, COMMAND_PRIORITY_LOW, KEY_ARROW_RIGHT_COMMAND, KEY_TAB_COMMAND, KEY_ESCAPE_COMMAND, $isElementNode} from 'lexical'
@@ -9,9 +11,12 @@ import {useCallback, useEffect} from 'react'
 import {useToolbarState} from './ToolbarContext'
 import {$createAutocompleteNode, AutocompleteNode} from './AutocompleteNode'
 import {addSwipeRightListener} from './swipe'
-import {getAutocompleteSuggestion} from './ai'
+import {getAutoCompleteFIMSuggestion, getAutoCompleteGPTSuggestions} from './ai'
 
 const HISTORY_MERGE = {tag: 'history-merge'}
+
+let _textBefore = ''
+let _textAfter = ''
 
 declare global {
 	interface Navigator {
@@ -19,6 +24,12 @@ declare global {
 			mobile: boolean
 		}
 	}
+}
+
+type Alternative = {
+	id: string
+	label: string
+	text: string
 }
 
 type SearchPromise = {
@@ -134,11 +145,9 @@ function useQuery(): (textBefore: string, textAfter: string) => SearchPromise {
 					return reject('Dismissed')
 				}
 
-				let suggestion = await getAutocompleteSuggestion(textBefore, textAfter)
-
-				if (suggestion) {
-					suggestion = normalizeSuggestion(suggestion)
-				}
+				_textBefore = textBefore
+				_textAfter = textAfter
+				let suggestion = await getAutoCompleteFIMSuggestion(textBefore, textAfter)
 
 				if (isDismissed) {
 					return reject('Dismissed')
@@ -150,10 +159,7 @@ function useQuery(): (textBefore: string, textAfter: string) => SearchPromise {
 			}
 		})
 
-		return {
-			dismiss,
-			promise
-		}
+		return {dismiss, promise}
 	}, [])
 }
 
@@ -164,7 +170,11 @@ function formatSuggestionText(suggestion: string): string {
 	return suggestion
 }
 
-export default function AutocompletePlugin(): JSX.Element | null {
+type Props = {
+	onAlternatives?: (alts: Alternative[]) => void
+}
+
+export default function AutocompletePlugin({onAlternatives}: Props): JSX.Element | null {
 	const [editor] = useLexicalComposerContext()
 	const query = useQuery()
 	const {toolbarState} = useToolbarState()
@@ -201,7 +211,6 @@ export default function AutocompletePlugin(): JSX.Element | null {
 			isUpdatingAutocomplete = true
 			editor.update(() => {
 				const selection = $getSelection()
-				// Skip the expensive $search call - we already know the text matches
 				if (!$isRangeSelection(selection)) {
 					isUpdatingAutocomplete = false
 					return
@@ -214,30 +223,23 @@ export default function AutocompletePlugin(): JSX.Element | null {
 					return
 				}
 
-				const offset = anchor.offset
-				const nodeText = currentNode.getTextContent()
 				prevNodeFormat = currentNode.getFormat()
 
-				// Always use the same approach: insert autocomplete at cursor position
 				const autocompleteNode = $createAutocompleteNode(formatSuggestionText(newSuggestion), uuid).setFormat(prevNodeFormat).setStyle(`font-size: ${toolbarState.fontSize}`)
 				autocompleteNodeKey = autocompleteNode.getKey()
 
-				// Use Lexical's built-in insertNodes which handles splitting correctly
 				selection.insertNodes([autocompleteNode])
 
-				// Move cursor back to just before the autocomplete node
-				// This ensures cursor stays at the insertion point
 				const newSelection = $getSelection()
 				if ($isRangeSelection(newSelection)) {
 					const autocompleteNodeFromKey = $getNodeByKey(autocompleteNodeKey)
 					if (autocompleteNodeFromKey) {
-						// Position cursor right before the autocomplete node
 						autocompleteNodeFromKey.selectPrevious()
 					}
 				}
 
 				lastSuggestion = newSuggestion
-				// Set flag immediately after update completes
+				// onAlternatives?.(newAlternatives)
 				isUpdatingAutocomplete = false
 			})
 		}
@@ -339,9 +341,15 @@ export default function AutocompletePlugin(): JSX.Element | null {
 		function $handleKeypressCommand(e: Event) {
 			if ($handleAutocompleteIntent()) {
 				e.preventDefault()
+				triggerExtraSuggestions()
 				return true
 			}
 			return false
+		}
+
+		async function triggerExtraSuggestions() {
+			let alts = await getAutoCompleteGPTSuggestions(_textBefore, _textAfter)
+			onAlternatives?.(alts)
 		}
 
 		function $handleEscapeCommand(e: Event) {
